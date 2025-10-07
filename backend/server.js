@@ -5,6 +5,7 @@ import morgan from "morgan";
 import cors from "cors";
 import productRoutes from "./routes/productRoutes.js";
 import { sql } from "./config/db.js";
+import { aj } from "./lib/arcjet.js";
 
 dotenv.config();
 
@@ -20,6 +21,37 @@ app.use(morgan("dev")); // Middleware ghi log
 app.use(cors()); // Middleware CORS
 
 app.use(express.json()); // Phân tích cú pháp JSON bodies
+
+// Middleware Arcjet - Áp dụng trước tất cả các route
+app.use(async (req, res, next) => {
+  const decision = await aj.protect(req);
+
+  if (decision.isDenied()) {
+    // Kiểm tra lý do bị từ chối
+    if (decision.reason.isRateLimit()) {
+      return res.status(429).json({
+        error: "Too Many Requests",
+        message: "Bạn đã vượt quá giới hạn yêu cầu. Vui lòng thử lại sau.",
+      });
+    }
+
+    if (decision.reason.isBot()) {
+      return res.status(403).json({
+        error: "Forbidden",
+        message: "Bot không được phép truy cập.",
+      });
+    }
+
+    // Các trường hợp từ chối khác
+    return res.status(403).json({
+      error: "Forbidden",
+      message: "Yêu cầu bị từ chối.",
+    });
+  }
+
+  // Nếu được phép, tiếp tục xử lý request
+  next();
+});
 
 // Route API cho sản phẩm
 app.use("/api/products", productRoutes);
